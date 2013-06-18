@@ -7,7 +7,6 @@ require 'erb'
 
 DataMapper.setup(:default, "sqlite://#{ File.dirname(File.expand_path( __FILE__ )) }/items.db")
 
-puts __DIR__
 
 class Item
   include DataMapper::Resource

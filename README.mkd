@@ -1,0 +1,15 @@
+## RakutenZaikoChecker
+
+
+
+## Setup
+You need to install ruby1.9 or higher.
+It tested in only 1.9.3.
+
+    bundle install
+
+## Usage
+
+    ruby ./app.rb
+
+This shows you the help.
