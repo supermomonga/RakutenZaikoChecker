@@ -3,22 +3,23 @@ require 'rubygems'
 require 'data_mapper'
 require 'thor'
 require 'net/http'
+require 'uri'
 require 'erb'
+require 'terminal-table'
 
 DataMapper.setup(:default, "sqlite://#{ File.dirname(File.expand_path( __FILE__ )) }/items.db")
-
 
 class Item
   include DataMapper::Resource
   property :id         , Serial
   property :name       , String
-  property :url        , String
-  property :available  , Boolean
+  property :url        , String, unique: true
+  property :available  , Boolean, default: true
   property :created_at , DateTime
-  property :updated_at , DateTime, default: true
+  property :updated_at , DateTime
 end
 
-class Status
+class Log
   include DataMapper::Resource
   property :id         , Serial
   property :name       , String
@@ -35,30 +36,51 @@ class Checker < Thor
   desc "list", "Show all url for checking"
   def list
     if Item.count == 0
-      puts "There are no url."
+      puts 'There are no url.'
     else
-      puts "ID   | NAME | URL"
-      puts "-----------------"
-      Item.all.each do |item|
-        puts ["%04d" % item.id, item.name, item.url].join " | "
+      Terminal::Table.new headings: ['ID', 'NAME', 'URL'] do |t|
+        Item.all.each do |item|
+          t << ["%04d" % item.id, item.name, item.url]
+        end
+        puts t
       end
     end
   end
 
-  desc "add [NAME] [URL]", "Add new url for checking"
+  desc 'add [NAME] [URL]', 'Add new url for checking'
   option :name, type: :string, aliases: '-n', desc: 'Name of item'
   option :url, type: :string, aliases: '-u', desc: 'URL of item page'
-  def add(name, url)
-    puts "Adding [#{ name }, #{ url }]..."
+  def add name, url
     item = Item.create name: name, url: url, created_at: Time.now, updated_at: Time.now
-    if item.save
-      puts "Done."
-    else
-      puts "Failed. Something seems wrong..."
-    end
+    puts item.save ? 'Successfully added.' : 'Adding failed.'
   end
 
+  desc 'remove [ID]', 'Remove url'
+  option :id, type: :string, desc: 'ID of remove item'
+  def remove id
+    item = Item.get id
+    puts ( item and item.destroy ) ? 'Successfully removed.' : 'Removing failed.'
+  end
 
+  desc 'check [ID]', 'Check stock and update log'
+  option :id, type: :string, desc: 'ID of check item'
+  def check id
+    item = Item.get id
+    if item
+      res = URI.parse(item.url).tap do |uri|
+        res = Net::HTTP.start(uri.host, uri.port) do |http|
+          http.request(Net::HTTP::Get.new(uri.path))
+        end
+        break res
+      end
+      body = res.body.encode('UTF-8', 'EUC-JP')
+      if body and /<span class="soldout_msg">売り切れました<br>/ =~ body
+        puts "urikire"
+      else
+        puts 'utteru'
+      end
+    end
+  end
 end
 
 Checker.start
