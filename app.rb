@@ -38,9 +38,9 @@ class Checker < Thor
     if Item.count == 0
       puts 'There are no url.'
     else
-      Terminal::Table.new headings: ['ID', 'NAME', 'URL'] do |t|
+      Terminal::Table.new headings: ['ID', 'NAME', 'URL', 'AVAILABLE', 'CREATED AT', 'UPDATED AT'] do |t|
         Item.all.each do |item|
-          t << ["%04d" % item.id, item.name, item.url]
+          t << [item.id, item.name, item.url, item.available, item.created_at, item.updated_at]
         end
         puts t
       end
@@ -51,7 +51,8 @@ class Checker < Thor
   option :name, type: :string, aliases: '-n', desc: 'Name of item'
   option :url, type: :string, aliases: '-u', desc: 'URL of item page'
   def add name, url
-    item = Item.create name: name, url: url, created_at: Time.now, updated_at: Time.now
+    now = Time.now
+    item = Item.create name: name, url: url, created_at: now, updated_at: now
     puts item.save ? 'Successfully added.' : 'Adding failed.'
   end
 
@@ -74,10 +75,22 @@ class Checker < Thor
         break res
       end
       body = res.body.encode('UTF-8', 'EUC-JP')
-      if body and /<span class="soldout_msg">売り切れました<br>/ =~ body
-        puts "urikire"
-      else
-        puts 'utteru'
+      if body
+        available = /<span class="soldout_msg">売り切れました<br>/ =~ body
+        if available != item.available
+          now = Time.now
+          item.available = available
+          item.updated_at = now
+          puts item.save ? 'Item successfully saved.' : 'Item saving failed.'
+          log = Log.create({
+            name: item.name,
+            url: item.url,
+            available: item.available,
+            created_at: now,
+            updated_at: now
+          })
+          puts log.save ? 'Log successfully saved.' : 'Log saving failed.'
+        end
       end
     end
   end
