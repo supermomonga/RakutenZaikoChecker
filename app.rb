@@ -1,11 +1,13 @@
+#!/usr/bin/env ruby
 # coding: utf-8
 require 'rubygems'
 require 'data_mapper'
 require 'thor'
-require 'net/http'
-require 'uri'
+require 'open-uri'
 require 'erb'
 require 'terminal-table'
+require 'mandrill'
+require 'nkf'
 
 DataMapper.setup(:default, "sqlite://#{ File.dirname(File.expand_path( __FILE__ )) }/items.db")
 
@@ -33,6 +35,27 @@ DataMapper.auto_upgrade!
 
 class Checker < Thor
 
+  desc "logs", "Show all log of stock status"
+  option :id, type: :string, desc: 'ID of item'
+  def logs
+    if Log.count == 0
+      puts 'There are no log.'
+    else
+      Terminal::Table.new headings: ['DATETIME', 'NAME', 'URL', 'AVAILABLE'] do |t|
+        if options.id?
+          item = Item.get(options.id)
+          t.title = "Stock log of #{ item.name }"
+        end
+        logs = item ? Log.all(url: item.url) : Log.all
+        logs.each do |log|
+          t << [log.created_at.strftime("%Y-%m-%d %H:%M:%S"), log.name, log.url, log.available ? 'in stock' : 'out of stock']
+        end
+        t.align_column 0, :right
+        puts t
+      end
+    end
+  end
+
   desc "list", "Show all url for checking"
   def list
     if Item.count == 0
@@ -40,8 +63,9 @@ class Checker < Thor
     else
       Terminal::Table.new headings: ['ID', 'NAME', 'URL', 'AVAILABLE', 'CREATED AT', 'UPDATED AT'] do |t|
         Item.all.each do |item|
-          t << [item.id, item.name, item.url, item.available, item.created_at, item.updated_at]
+          t << [item.id, item.name, item.url, item.available ? 'in stock' : 'out of stock', item.created_at.strftime("%Y-%m-%d %H:%M:%S"), item.updated_at.strftime("%Y-%m-%d %H:%M:%S")]
         end
+        t.align_column 0, :right
         puts t
       end
     end
@@ -65,36 +89,69 @@ class Checker < Thor
 
   desc 'check [ID]', 'Check stock and update log'
   option :id, type: :string, desc: 'ID of check item'
+  option :email, type: :string, aliases: '-m', desc: 'Email to send notice if item switched to unavailable.'
+  option :apikey, type: :string, aliases: '-a', desc: 'MANDRILL api-key to send email notification'
   def check id
+    puts "Checking item(id:#{ id })"
     item = Item.get id
     if item
-      res = URI.parse(item.url).tap do |uri|
-        res = Net::HTTP.start(uri.host, uri.port) do |http|
-          http.request(Net::HTTP::Get.new(uri.path))
-        end
-        break res
+      begin
+        res = open(item.url)
+      rescue
+        puts 'URL parse failed.'
       end
-      body = res.body.encode('UTF-8', 'EUC-JP')
-      if body
-        available = /<span class="soldout_msg">売り切れました<br>/ =~ body
-        if available != item.available
-          now = Time.now
-          item.available = available
-          item.updated_at = now
-          puts item.save ? 'Item successfully saved.' : 'Item saving failed.'
-          log = Log.create({
-            name: item.name,
-            url: item.url,
-            available: item.available,
-            created_at: now,
-            updated_at: now
-          })
-          puts log.save ? 'Log successfully saved.' : 'Log saving failed.'
+      if res
+        begin
+          body = res.read.encode('UTF-8')
+        rescue
+          puts "Can't convert encoding."
+        end
+        if body
+          puts "Checking stock"
+          available = body =~ /<span class="soldout_msg">売り切れました<br>/ ? false : true
+          puts "Stock is #{ available ? 'in' : 'out' }"
+          if available != item.available
+            now = Time.now
+            item.available = available
+            item.updated_at = now
+            puts item.save ? 'Item successfully saved.' : 'Item saving failed.'
+            log = Log.create(
+              name: item.name,
+              url: item.url,
+              available: item.available,
+              created_at: now,
+              updated_at: now
+            )
+            puts log.save ? 'Log successfully saved.' : 'Log saving failed.'
+            if options[:email] and options[:apikey] and available == false
+              m = Mandrill::API.new options[:apikey]
+              message = {
+                subject: "商品「#{ item.name }」が売り切れました",
+                from_name: '楽天在庫チェッカー',
+                text: "URL:#{ item.url }\nDATE:#{ now }",
+                to: [ { email: options[:email] } ],
+                  from_email: 'extends.hk+noreply@gmail.com'
+              }
+              sending = m.messages.send message
+              puts sending
+            end
+          end
         end
       end
     end
   end
+
+  desc 'checkall', 'Check stock and update log with all items.'
+  option :email, type: :string, aliases: '-m', desc: 'Email to send notice if item switched to unavailable.'
+  option :apikey, type: :string, aliases: '-a', desc: 'MANDRILL api-key to send email notification'
+  def checkall
+    Item.all.each do |item|
+      check item.id
+      sleep 1
+    end
+  end
 end
+
 
 Checker.start
 
