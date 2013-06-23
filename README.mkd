@@ -35,4 +35,8 @@ This shows you the help.
 
     ./app.rb help checkall
 
+## List logs
+
+    ./app.rb help logs
+
 
