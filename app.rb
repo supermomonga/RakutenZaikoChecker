@@ -1,6 +1,7 @@
 #!/usr/bin/env ruby
 # coding: utf-8
 require 'rubygems'
+require 'bundler/setup'
 require 'data_mapper'
 require 'thor'
 require 'open-uri'
