@@ -7,36 +7,35 @@ You need to install ruby1.9 or higher.
 It tested in only 1.9.3.
 
     bundle install
-    chmod a+x app.rb
 
 ## Usage
 
-    ./app.rb
+    ruby ./app.rb
 
 This shows you the help.
 
 ## Create item
 
-    ./app.rb help add
+    ruby ./app.rb help add
 
 ## List item
 
-    ./app.rb list
+    ruby ./app.rb list
 
 ## Delete item
 
-    ./app.rb help remove
+    ruby ./app.rb help remove
 
 ## Check item's stock
 
-    ./app.rb help check
+    ruby ./app.rb help check
 
 ## Check all item's stock
 
-    ./app.rb help checkall
+    ruby ./app.rb help checkall
 
 ## List logs
 
-    ./app.rb help logs
+    ruby ./app.rb help logs
 
 
